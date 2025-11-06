@@ -1,6 +1,6 @@
 /*
-/// Module: variableandstruct
-module variableandstruct::variableandstruct;
+/// Module: whitelist
+module whitelist::whitelist;
 */
 
 // For Move coding conventions, see
