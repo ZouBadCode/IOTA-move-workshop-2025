@@ -1,7 +1,7 @@
-module yes::test;
+module example1::test;
 
-use sui::coin::{Self, TreasuryCap, Coin};
-use sui::url;
+use iota::coin::{Self, TreasuryCap, Coin};
+use iota::url;
 
 public struct TEST has drop {}
 
