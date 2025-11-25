@@ -9,6 +9,11 @@ use iota::tx_context::{Self, TxContext};
 use iota::vec_map::{Self as vec_map, VecMap, empty as vec_map_empty};
 use objecthero::heroc_token::{Self, HEROC_TOKEN};
 
+public struct GameTreasuryCap has key, store {
+    id: UID,
+    cap: TreasuryCap<HEROC_TOKEN>,
+}
+
 public struct Gem has key, store {
     id: UID,
     power: u64,
@@ -50,6 +55,15 @@ fun init(ctx: &mut TxContext) {
     public_share_object(list);
 }
 
+public entry fun setup_game_treasury(treasury_cap: TreasuryCap<HEROC_TOKEN>, ctx: &mut TxContext) {
+    let treasury_obj = GameTreasuryCap {
+        id: object::new(ctx),
+        cap: treasury_cap,
+    };
+
+    transfer::public_share_object(treasury_obj);
+}
+
 fun random_value(r: &Random, low: u64, high: u64, ctx: &mut TxContext): u64 {
     let mut generator = random::new_generator(r, ctx);
     let random_num = random::generate_u64_in_range(&mut generator, low, high);
@@ -88,7 +102,7 @@ public entry fun create_shield(r: &Random, ctx: &mut TxContext) {
 
 public entry fun create_hero(
     r: &Random,
-    coin_cap: &mut TreasuryCap<HEROC_TOKEN>,
+    game_coin_cap:  &mut GameTreasuryCap,
     owned_sword: Sword,
     owned_shield: Shield,
     mut payment: Coin<HEROC_TOKEN>,
@@ -97,7 +111,11 @@ public entry fun create_hero(
     let paid_amount = coin::value(&payment);
     assert!(paid_amount == MINT_HERO_PRICE, 9999);
 
-    heroc_token::burn(coin_cap, payment);
+    let treasury_cap_ref = &mut game_coin_cap.cap;
+    heroc_token::burn(treasury_cap_ref, payment);
+
+
+
     let power = random_value(r, 5, 8, ctx);
     let newproficiency = random_value(r, 120, 200, ctx);
 
@@ -111,11 +129,9 @@ public entry fun create_hero(
     transfer::transfer(person, tx_context::sender(ctx));
 }
 
-fun attack_quantity(wl:&mut FightList, attack: u64,sender:address) {
-
+fun attack_quantity(wl: &mut FightList, attack: u64, sender: address) {
     if (vec_map::contains(&wl.allowed, &sender)) {
-
-        let current_score_ref = vec_map::get_mut(&mut wl.allowed,&sender);
+        let current_score_ref = vec_map::get_mut(&mut wl.allowed, &sender);
         *current_score_ref = *current_score_ref + attack;
     } else {
         //不存在: 直接插入新的分數
@@ -124,13 +140,12 @@ fun attack_quantity(wl:&mut FightList, attack: u64,sender:address) {
 }
 
 public entry fun attack_the_boss(
-    coin_cap: &mut TreasuryCap<HEROC_TOKEN>,
+    game_coin_cap: &mut GameTreasuryCap,
     hero: &Hero,
     wl: &mut FightList,
     ctx: &mut TxContext,
 ) {
     let sender = tx_context::sender(ctx);
-
 
     let sword_option = &hero.sword;
     let shield_option = &hero.shield;
@@ -150,14 +165,16 @@ public entry fun attack_the_boss(
     // 計算公式
     let attack_power = ((hero.power + end_power) * hero.proficiency * MINT_HERO_DECIMALS) / 100;
 
+    let treasury_cap_ref = &mut game_coin_cap.cap;
+
     heroc_token::mint(
-        coin_cap,
+        treasury_cap_ref,
         attack_power,
         tx_context::sender(ctx),
         ctx,
     );
 
-    attack_quantity(wl, attack_power,sender);
+    attack_quantity(wl, attack_power, sender);
 }
 
 public entry fun unwrapItems(mut hero: Hero, ctx: &mut TxContext) {

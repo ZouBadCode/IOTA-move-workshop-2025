@@ -24,7 +24,7 @@ fun init(witness:HEROC_TOKEN,ctx: &mut TxContext) {
     let coin = coin::mint(&mut treasury_cap, 5000000000000, ctx);
     transfer::public_transfer(coin, sender);
 
-    transfer::public_share_object(treasury_cap);
+    transfer::public_transfer(treasury_cap,sender);
     transfer::public_freeze_object(metadata);
 }
 
