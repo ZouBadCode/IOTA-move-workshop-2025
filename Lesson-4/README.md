@@ -2,6 +2,10 @@
 
 https://slides.ycnets.com/20251204
 
+## 程式碼
+
+https://github.com/Liquidlink-Lab/iota-hero-demo
+
 ## `.env`
 
 ```ini
