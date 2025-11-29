@@ -2,14 +2,16 @@ module objecthero::hero;
 
 use iota::address;
 use iota::coin::{Self, Coin, TreasuryCap};
-use iota::object::{UID, new as object_new};
+use iota::object::{UID, new as object_new, ID};
 use iota::random::{Self, Random};
 use iota::transfer::{Self, public_share_object, transfer};
 use iota::tx_context::{Self, TxContext};
 use iota::vec_map::{Self as vec_map, VecMap, empty as vec_map_empty};
 use iota::clock::{Self, Clock};
 use objecthero::heroc_token::{Self, HEROC_TOKEN};
+use iota::tx_context::epoch;
 
+const EAttackLimit: u64 = 0;
 
 public struct GameTreasuryCap has key, store {
     id: UID,
@@ -38,13 +40,14 @@ public struct Hero has key {
     power: u64,
     sword: Option<Sword>,
     shield: Option<Shield>,
+    latest_attack_epoch: u64,
+    attack_times: u8
 }
+
 
 public struct FightList has key, store {
     id: UID,
     ranking: VecMap<address, u64>,
-    cooldown:VecMap<UID, u64>,
-
 }
 
 const MINT_HERO_PRICE: u64 = 50_000_000_000;
@@ -53,8 +56,7 @@ const MINT_HERO_DECIMALS: u64 = 1_000_000_000;
 fun init(ctx: &mut TxContext) {
     let list = FightList {
         id: object_new(ctx),
-        ranking:vec_map_empty(), 
-        cooldown:vec_map_empty(),
+        ranking:vec_map_empty(),
     };
 
     public_share_object(list);
@@ -119,8 +121,6 @@ public entry fun create_hero_with_equipment(
     let treasury_cap_ref = &mut game_coin_cap.cap;
     heroc_token::burn(treasury_cap_ref, payment);
 
-
-
     let power = random_value(r, 5, 8, ctx);
     let newproficiency = random_value(r, 120, 200, ctx);
 
@@ -130,6 +130,8 @@ public entry fun create_hero_with_equipment(
         power: power,
         sword: option::some(owned_sword),
         shield: option::some(owned_shield),
+        attack_times: 0,
+        latest_attack_epoch: 0,
     };
     transfer::transfer(person, tx_context::sender(ctx));
 }
@@ -155,48 +157,37 @@ public entry fun create_hero(
         power: power,
         sword: option::none(),
         shield: option::none(),
+        attack_times: 0,
+        latest_attack_epoch: 0,
     };
     transfer::transfer(person, tx_context::sender(ctx));
 }
 
-public fun get_current_time(clock: &Clock): u64 {
-        clock::timestamp_ms(clock)
-}
-
-fun attack_quantity(wl: &mut FightList, attack: u64, sender: address,hero: &Hero,clock: &Clock) {
-    
+fun attack_quantity(wl: &mut FightList, attack: u64, sender: address,hero: &mut Hero, ctx: &mut TxContext) {
+    assert!(hero.attack_times <= 3 && hero.latest_attack_epoch < ctx.epoch(), EAttackLimit);
     if (vec_map::contains(&wl.ranking, &sender)) {
         let current_score_ref = vec_map::get_mut(&mut wl.ranking, &sender);
         *current_score_ref = *current_score_ref + attack;
     } else {
         //不存在: 直接插入新的分數
         vec_map::insert(&mut wl.ranking, sender, attack);
-    }
+    };
 
-    let current_time_ms = get_current_time(clock);
-    let hero_id_ref = object::id(hero);
+    let current_epoch = ctx.epoch();
+    let hero_epoch = hero.latest_attack_epoch;
+    if (current_epoch > hero_epoch) {
+        hero.attack_times = 0;
+        hero.latest_attack_epoch = current_epoch;
+    };
 
-    //確認時間 8 hr = 28,800,000 
-    if (vec_map::contains(&wl.cooldown, &sender)) {
-        let current_score_ref = vec_map::get_mut(&mut wl.cooldown, hero_id_ref);
-        // *current_score_ref = *current_score_ref + attack;
-
-        assert!(current_time_ms >= current_score_ref +  28_800_000, 9999);
-        *current_score_ref = *current_score_ref + 28_800_000;
-
-
-    } else {
-        vec_map::insert(&mut wl.cooldown, hero_id_ref, current_time_ms);
-    }
-
-
+    hero.attack_times = hero.attack_times + 1;
 }
 
 public entry fun attack_the_boss(
     clock: &Clock,
     r: &Random,
     game_coin_cap: &mut GameTreasuryCap,
-    hero: &Hero,
+    hero: &mut Hero,
     wl: &mut FightList,
     ctx: &mut TxContext,
 ) {
@@ -231,7 +222,7 @@ public entry fun attack_the_boss(
         ctx,
     );
 
-    attack_quantity(wl, attack_power, sender,hero,clock);
+    attack_quantity(wl, attack_power, sender,hero, ctx);
 }
 
 public entry fun unwrapItems(mut hero: Hero, ctx: &mut TxContext) {
